@@ -1,8 +1,8 @@
 from app.core.security import verify_password
 from app.models.auth import UserAuth
 from fastapi import HTTPException,status
-from app.core.security import hashpassword
-from app.schemas.auth import UserResponse
+from app.core.security import hashpassword,create_access_token
+from app.schemas.auth import UserResponse,TokenResponse
 
 
 
@@ -30,7 +30,7 @@ def user_register_service(db,data) -> UserAuth:
 
     return new_user
 
-def user_login_service(db,data) -> UserResponse:
+def user_login_service(db,data) -> TokenResponse:
     
     user= db.query(UserAuth).filter(
                                 UserAuth.email == data.email).first()
@@ -40,7 +40,13 @@ def user_login_service(db,data) -> UserResponse:
                                     plain_password=data.password):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,
         detail="incorrected email or password")
+    data = {"sub":str(user.id),
+            "role":user.role}
+    token = create_access_token(data=data)
 
-    return user           
+    return TokenResponse(
+    access_token=token,
+    token_type="bearer"
+                        )      
 
     
