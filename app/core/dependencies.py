@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.core.database import get_db
 from app.models.auth import UserAuth
+from app.models.revoked_tokens import Revokedtoken
 
 # 1. HTTPBearer tells Swagger to show a single "Value: <token>" input box!
 #    auto_error=False lets us return a standard 401 Unauthorized if the header is missing.
@@ -39,8 +40,14 @@ def get_current_user(
         )
         # Extract user ID from the "sub" claim
         user_id: str | None = payload.get("sub")
-        if user_id is None:
+        jti:str | None = payload.get("jti")
+        revoked = db.query(Revokedtoken).filter(
+            Revokedtoken.jti == jti).first()
+        if user_id is None or jti is None:
             raise credentials_exception
+        elif revoked:
+            raise credentials_exception
+        
 
     except jwt.PyJWTError:
         # If token is expired, forged, or invalid

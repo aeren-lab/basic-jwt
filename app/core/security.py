@@ -3,6 +3,7 @@ from argon2.exceptions import VerificationError,VerifyMismatchError
 import jwt
 from datetime import datetime,timedelta,timezone
 from app.core.config import settings
+from uuid import uuid4
 
 
 
@@ -32,6 +33,7 @@ def create_access_token(data:dict,expires_delta:timedelta|None = None) -> str:
             minutes=settings.access_token_expire_minutes
         )
     to_encode["exp"] = exp
+    to_encode["jti"] = str(uuid4())
 
     token = jwt.encode(
         payload= to_encode,

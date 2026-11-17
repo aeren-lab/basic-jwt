@@ -1,4 +1,5 @@
 from fastapi import responses
+from pydantic_settings import CliUnknownArgs
 from tests.conftest import TestingSessionLocal
 from app.models.auth import UserAuth
 
@@ -147,3 +148,19 @@ def test_admin_access_with_user(client):
     response = client.get("/auth/admin-only",headers= {"Authorization":f"Bearer {token}"})
 
     assert response.status_code == 403
+
+#12 test the logout
+def test_logout_success(client):
+    data ={"email":"me@example.com","password":"password123"}
+    client.post("/auth/register",json=data)
+    login = client.post("/auth/login",json=data)
+    token = login.json()["access_token"]
+
+    response = client.post("/auth/logout",headers={"Authorization":f"Bearer {token}"})
+
+    assert response.status_code == 200
+    assert response.json()["message"] == "Successfully logged out"
+
+    response = client.get("/auth/me",headers={"Authorization":f"Bearer {token}"})
+
+    assert response.status_code == 401

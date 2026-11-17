@@ -27,7 +27,7 @@ def test_verifyed_password():
     assert verify_password(wrong_password,hashed_password) == False
     assert verify_password(plain_password,hashed_password) == True
 
-# check creation of token
+#3 check creation of token
 def test_create_access_token():
     token = create_access_token(data={"sub": "1", "role": "user"})
     decode = jwt.decode(
@@ -39,7 +39,7 @@ def test_create_access_token():
     assert decode["role"] =="user"
     assert decode["exp"]  !=  None
 
-# check the expirey
+#4 check the expirey
 def test_expired_access_token():
     token = create_access_token(
     data={"sub": "1"}, 
@@ -51,3 +51,16 @@ def test_expired_access_token():
             key= settings.secret_key,
             algorithms=[settings.algorithm]
         )
+
+#5 check the uuid implimentation
+def test_uuid_implimentation():
+    data = {"sub":"1",
+            "role":"user"}
+    token = create_access_token(data)
+
+    decode = jwt.decode(
+        jwt = token,
+        key= settings.secret_key,
+        algorithms= settings.algorithm
+    )
+    assert decode.get("jti") != None

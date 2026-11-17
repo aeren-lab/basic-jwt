@@ -29,7 +29,7 @@ app.dependency_overrides[get_db] = override_get_db
 @pytest.fixture(autouse=True)
 def clean_tables():
     with test_engine.connect() as conn:
-        conn.execute(text("TRUNCATE TABLE user_auth RESTART IDENTITY CASCADE;"))
+        conn.execute(text("TRUNCATE TABLE user_auth, revoked_tokens RESTART IDENTITY CASCADE;"))
         conn.commit()
     yield
 
