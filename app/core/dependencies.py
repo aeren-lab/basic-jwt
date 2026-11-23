@@ -79,3 +79,17 @@ def require_admin(current_user:UserAuth = Depends(get_current_active_user
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
         detail="admin privileage required")
 
+
+# Accepts a single role (e.g. "admin") or a list of roles (e.g. ["admin", "moderator"])
+def require_role(allowed_roles: list[str] | str):
+    roles = [allowed_roles] if isinstance(allowed_roles, str) else allowed_roles
+
+    def role_checker(current_user: UserAuth = Depends(get_current_active_user)) -> UserAuth:
+        if current_user.role not in roles:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Not enough permissions"
+            )
+        return current_user
+
+    return role_checker

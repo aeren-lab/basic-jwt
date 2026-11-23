@@ -1,9 +1,11 @@
+import datetime
 from app.core.config import settings
 from app.core.security import (verify_password,hashpassword,
-                                create_access_token)
+                                create_access_token,
+                                create_refresh_token)
 import jwt
 import pytest
-from datetime import timedelta
+from datetime import timedelta,datetime,timezone
 
 
 
@@ -61,6 +63,36 @@ def test_uuid_implimentation():
     decode = jwt.decode(
         jwt = token,
         key= settings.secret_key,
-        algorithms= settings.algorithm
+        algorithms= [settings.algorithm]
     )
     assert decode.get("jti") != None
+
+#6 check the refresh token creation
+def test_creating_refresh_token(client):
+    data = {"sub": "1", "role": "user"}
+    refresh_token = create_refresh_token(data)
+
+    decode = jwt.decode(
+        jwt=refresh_token,
+        key= settings.secret_key,
+        algorithms=[settings.algorithm]
+    )
+    
+    assert decode.get("exp") is not None
+    assert decode.get("type") == "refresh"
+    assert decode.get("jti") is not None
+
+
+
+#7 test the refresh toke expired
+def test_refresh_token_expired():
+    token = create_refresh_token(
+        data={"sub": "1"}, 
+        expires_delta=timedelta(days=-1)
+    )
+    with pytest.raises(jwt.ExpiredSignatureError):
+        jwt.decode(
+            jwt=token,
+            key=settings.secret_key,
+            algorithms=[settings.algorithm]
+        )
