@@ -8,6 +8,8 @@ from app.core.config import settings
 from app.core.database import Base
 from app.models.auth import UserAuth
 from app.models.revoked_tokens import Revokedtoken
+from app.models.sessions import UserSession
+from app.models.login_history import LoginHistory
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.

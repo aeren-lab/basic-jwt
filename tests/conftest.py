@@ -6,6 +6,8 @@ from sqlalchemy.orm import sessionmaker
 from main import app
 from app.core.database import Base, get_db
 from app.core.config import settings
+from app.models.sessions import UserSession
+from app.models.login_history import LoginHistory
 
 # 1. Connect to jwt_learn_test
 TEST_DATABASE_URL = settings.database_url.rsplit("/", 1)[0] + "/jwt_learn_test"
@@ -30,7 +32,7 @@ app.dependency_overrides[get_db] = override_get_db
 @pytest.fixture(autouse=True)
 def clean_tables():
     with test_engine.connect() as conn:
-        conn.execute(text("TRUNCATE TABLE user_auth, revoked_tokens RESTART IDENTITY CASCADE;"))
+        conn.execute(text("TRUNCATE TABLE user_auth, revoked_tokens, user_sessions, login_history RESTART IDENTITY CASCADE;"))
         conn.commit()
     yield
 

@@ -1,3 +1,4 @@
+from datetime import datetime
 from pydantic import BaseModel,Field,EmailStr
 
 
@@ -49,3 +50,29 @@ class VerifyEmailRequest(BaseModel):
 
 class DeactivateAccountRequest(BaseModel):
     password: str
+
+class SessionResponse(BaseModel):
+    id: int
+    device_info: str | None
+    ip_address: str | None
+    created_at: datetime
+    last_active_at: datetime
+    is_revoked: bool
+
+    model_config = {
+        "from_attributes": True
+    }
+
+class LoginHistoryResponse(BaseModel):
+    id: int
+    email: str
+    ip_address: str | None
+    user_agent: str | None
+    status: str
+    created_at: datetime
+
+    model_config = {
+        "from_attributes": True
+    }
+
+

@@ -1,7 +1,9 @@
-from fastapi.security import http
 from starlette.status import HTTP_400_BAD_REQUEST, HTTP_401_UNAUTHORIZED, HTTP_404_NOT_FOUND
 from app.core.config import settings
+from app.models import login_history
 from app.models.auth import UserAuth
+from app.models.sessions import UserSession
+from app.models.login_history import LoginHistory
 from app.models.revoked_tokens import Revokedtoken
 from fastapi import HTTPException,status
 from app.core.security import (create_reset_token, hashpassword,create_access_token,
@@ -9,7 +11,7 @@ from app.core.security import (create_reset_token, hashpassword,create_access_to
 from app.schemas.auth import (UserResponse, TokenResponse, ForgotPasswordRequest,
                             ResetPasswordRequest, VerifyEmailRequest, DeactivateAccountRequest)
 import jwt
-from datetime import datetime,timezone
+from datetime import datetime,timezone,timedelta
 
 
 
@@ -36,25 +38,83 @@ def user_register_service(db,data) -> UserAuth:
 
     return new_user
 
-def user_login_service(db,data) -> TokenResponse:
+def user_login_service(db,data,ip_address:str | None = None,
+                    user_agent:str | None = None) -> TokenResponse:
     
     user= db.query(UserAuth).filter(
                                 UserAuth.email == data.email).first()
     
-
+    
     if not user or not verify_password(hashed_password=user.hashed_password,
                                     plain_password=data.password):
+        history = LoginHistory(
+        user_id = user.id if user else None,
+        email = data.email,
+        ip_address = ip_address,
+        user_agent = user_agent,
+        status = "failed",
+        created_at = datetime.now(timezone.utc)
+        )
+
+        db.add(history)
+        db.commit()
+
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,
         detail="incorrected email or password")
+
     if not user.is_active:
+
+        history = LoginHistory(
+        user_id = user.id,
+        email = user.email,
+        ip_address = ip_address,
+        user_agent = user_agent,
+        status = "failed",
+        created_at = datetime.now(timezone.utc)
+        )
+
+        db.add(history)
+        db.commit()
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Account is deactivated"
         )
+       
     data = {"sub":str(user.id),
             "role":user.role}
     access_token = create_access_token(data=data)
     refresh_token = create_refresh_token(data= data)
+    refresh_token_decode = jwt.decode(
+        jwt=refresh_token,
+        key=settings.secret_key,
+        algorithms=[settings.algorithm]
+    )
+
+    jti = refresh_token_decode.get("jti")
+
+    user_session = UserSession(
+        user_id = user.id,
+        refresh_token_jti = jti,
+        device_info = user_agent,
+        ip_address = ip_address
+    )
+
+    db.add(user_session)
+    db.commit()
+    
+
+    history = LoginHistory(
+        user_id = user.id,
+        email = user.email,
+        ip_address = ip_address,
+        user_agent = user_agent,
+        status = "success",
+        created_at = datetime.now(timezone.utc)
+    )
+
+    db.add(history)
+    db.commit()
+
     return TokenResponse(
         access_token=access_token,
         token_type="bearer",
@@ -126,7 +186,12 @@ def refresh_token_service(db,data) -> TokenResponse:
         raise HTTPException(status_code=HTTP_401_UNAUTHORIZED,
                             detail=" Token has been revoked"
         )
-    
+    check_session_revoke = db.query(UserSession).filter(UserSession.refresh_token_jti == jti).first()
+    if check_session_revoke is not None and check_session_revoke.is_revoked:
+        raise HTTPException(
+            status_code=HTTP_401_UNAUTHORIZED,
+            detail="session has been revoked"
+        )
     user = db.query(UserAuth).filter(UserAuth.id == int(user_id)).first()
     exp = decode_refresh_token.get("exp")
 
@@ -140,6 +205,8 @@ def refresh_token_service(db,data) -> TokenResponse:
     
     expires_at = datetime.fromtimestamp(float(exp), tz=timezone.utc)
 
+    
+
     revoke_refresh = Revokedtoken(
         jti = jti,
         expires_at = expires_at
@@ -148,6 +215,30 @@ def refresh_token_service(db,data) -> TokenResponse:
     db.commit()
 
     new_refresh_token = create_refresh_token(data={"sub": str(user.id), "role": user.role})
+    
+    try:
+        decode_refresh_token = jwt.decode(
+            jwt=new_refresh_token,
+            key=settings.secret_key,
+            algorithms=[settings.algorithm]
+        )
+        new_jti = decode_refresh_token.get("jti")
+
+    except jwt.PyJWTError:
+        raise HTTPException(status_code=HTTP_401_UNAUTHORIZED,
+                            detail=" refresh code is not avalivable"
+        )
+    if check_session_revoke:
+        check_session_revoke.refresh_token_jti = new_jti
+        check_session_revoke.last_active_at = datetime.now(timezone.utc)
+
+    
+
+    db.commit()
+
+    
+    
+    
     return TokenResponse(access_token=new_access_token, 
                     token_type="bearer", 
                     refresh_token=new_refresh_token)
@@ -353,6 +444,45 @@ def deactivate_account_service(db, data: DeactivateAccountRequest, current_user:
 
     db.commit()
     return {"message": "Account deactivated successfully"}
+
+
+def get_user_sessions_service(db, current_user: UserAuth) -> list[UserSession]:
+    return (
+        db.query(UserSession)
+        .filter(UserSession.user_id == current_user.id, UserSession.is_revoked == False)
+        .order_by(UserSession.last_active_at.desc())
+        .all()
+    )
+
+
+def revoke_session_service(db, session_id: int, current_user: UserAuth) -> dict:
+    session = (
+        db.query(UserSession)
+        .filter(UserSession.id == session_id, UserSession.user_id == current_user.id)
+        .first()
+    )
+    if not session:
+        raise HTTPException(status_code=HTTP_404_NOT_FOUND, detail="Session not found")
+
+    session.is_revoked = True
+
+    exp = datetime.now(timezone.utc) + timedelta(days=settings.refresh_token_expire_days)
+    revoke = Revokedtoken(jti=session.refresh_token_jti, expires_at=exp)
+    db.add(revoke)
+    db.commit()
+
+    return {"message": "Session revoked successfully"}
+
+
+def get_login_history_service(db, current_user: UserAuth) -> list[LoginHistory]:
+    return (
+        db.query(LoginHistory)
+        .filter(LoginHistory.user_id == current_user.id)
+        .order_by(LoginHistory.created_at.desc())
+        .all()
+    )
+
+
 
 
 

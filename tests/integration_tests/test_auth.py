@@ -776,6 +776,130 @@ def test_login_deactivated_account_rejected(client):
     assert res.json()["detail"] == "Account is deactivated"
 
 
+# 43 test listing active sessions for current user
+def test_list_user_sessions(client):
+    data = {"email": "multidevice@example.com", "password": "Password123"}
+    client.post("/auth/register", json=data)
+
+    # Login 1: Laptop
+    res1 = client.post("/auth/login", json=data, headers={"User-Agent": "Laptop Chrome"})
+    token1 = res1.json()["access_token"]
+
+    # Login 2: Phone
+    client.post("/auth/login", json=data, headers={"User-Agent": "iPhone Safari"})
+
+    # Query active sessions
+    sessions_res = client.get("/auth/sessions", headers={"Authorization": f"Bearer {token1}"})
+    assert sessions_res.status_code == 200
+    sessions = sessions_res.json()
+    assert len(sessions) == 2
+    devices = [s["device_info"] for s in sessions]
+    assert "Laptop Chrome" in devices
+    assert "iPhone Safari" in devices
+
+
+# 44 test revoking a specific session logs out that device
+def test_revoke_specific_session(client):
+    data = {"email": "revokedevice@example.com", "password": "Password123"}
+    client.post("/auth/register", json=data)
+
+    # Login device 1
+    res1 = client.post("/auth/login", json=data, headers={"User-Agent": "Device 1"})
+    token1 = res1.json()["access_token"]
+    refresh1 = res1.json()["refresh_token"]
+
+    # Login device 2
+    res2 = client.post("/auth/login", json=data, headers={"User-Agent": "Device 2"})
+    refresh2 = res2.json()["refresh_token"]
+
+    # List sessions to find device 1's session ID
+    sessions_res = client.get("/auth/sessions", headers={"Authorization": f"Bearer {token1}"})
+    sessions = sessions_res.json()
+    device1_session = next(s for s in sessions if s["device_info"] == "Device 1")
+
+    # Revoke device 1
+    del_res = client.delete(
+        f"/auth/sessions/{device1_session['id']}",
+        headers={"Authorization": f"Bearer {token1}"}
+    )
+    assert del_res.status_code == 200
+    assert del_res.json()["message"] == "Session revoked successfully"
+
+    # Refresh with Device 1's token now fails
+    ref1_res = client.post("/auth/refresh", json={"refresh_token": refresh1})
+    assert ref1_res.status_code == 401
+
+    # Refresh with Device 2's token still works
+    ref2_res = client.post("/auth/refresh", json={"refresh_token": refresh2})
+    assert ref2_res.status_code == 200
+    assert "access_token" in ref2_res.json()
+
+
+# 45 test user cannot revoke another user's session
+def test_revoke_other_user_session_fails(client):
+    # User A
+    user_a = {"email": "usera@example.com", "password": "Password123"}
+    client.post("/auth/register", json=user_a)
+    login_a = client.post("/auth/login", json=user_a)
+    token_a = login_a.json()["access_token"]
+    sessions_a = client.get("/auth/sessions", headers={"Authorization": f"Bearer {token_a}"}).json()
+    session_a_id = sessions_a[0]["id"]
+
+    # User B
+    user_b = {"email": "userb@example.com", "password": "Password123"}
+    client.post("/auth/register", json=user_b)
+    login_b = client.post("/auth/login", json=user_b)
+    token_b = login_b.json()["access_token"]
+
+    # User B tries to revoke User A's session -> 404
+    del_res = client.delete(
+        f"/auth/sessions/{session_a_id}",
+        headers={"Authorization": f"Bearer {token_b}"}
+    )
+    assert del_res.status_code == 404
+    assert del_res.json()["detail"] == "Session not found"
+
+
+# 46 test login history records both failed and successful attempts
+def test_login_history_records_success_and_failure(client):
+    data = {"email": "history@example.com", "password": "Password123"}
+    client.post("/auth/register", json=data)
+
+    # 1. Failed login attempt (wrong password)
+    client.post(
+        "/auth/login",
+        json={"email": "history@example.com", "password": "WrongPassword"},
+        headers={"User-Agent": "BadClient"}
+    )
+
+    # 2. Successful login attempt
+    login_res = client.post(
+        "/auth/login",
+        json=data,
+        headers={"User-Agent": "GoodClient"}
+    )
+    token = login_res.json()["access_token"]
+
+    # Check history (newest first)
+    hist_res = client.get("/auth/login-history", headers={"Authorization": f"Bearer {token}"})
+    assert hist_res.status_code == 200
+    history = hist_res.json()
+    assert len(history) == 2
+
+    assert history[0]["status"] == "success"
+    assert history[0]["user_agent"] == "GoodClient"
+    assert history[1]["status"] == "failed"
+    assert history[1]["user_agent"] == "BadClient"
+
+
+# 47 test login history requires authentication
+def test_login_history_requires_auth(client):
+    res = client.get("/auth/login-history")
+    assert res.status_code == 401
+
+
+
+
 
 
 
