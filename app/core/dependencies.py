@@ -93,3 +93,34 @@ def require_role(allowed_roles: list[str] | str):
         return current_user
 
     return role_checker
+
+
+# 1. Define the permissions associated with each role
+ROLE_PERMISSIONS: dict[str, list[str]] = {
+    "admin": ["read:users", "write:users", "delete:users"],
+    "moderator": ["read:users", "write:users"],
+    "user": ["read:users"],
+}
+
+# 2. Reusable permission dependency factory
+def require_permission(required_permission: str):
+    def permission_checker(current_user: UserAuth = Depends(get_current_active_user)) -> UserAuth:
+        user_permissions = ROLE_PERMISSIONS.get(current_user.role, [])
+        
+        if required_permission not in user_permissions:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Permission denied: '{required_permission}' required"
+            )
+            
+        return current_user
+
+    return permission_checker
+
+def require_verified_user(current_user: UserAuth = Depends(get_current_active_user)) -> UserAuth:
+    if not current_user.is_verified:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Email verification required"
+        )
+    return current_user

@@ -32,3 +32,7 @@ class UserAuth(Base):
         nullable=False,
         default=True
     )
+    is_verified: Mapped[bool] = mapped_column(
+    nullable=False,
+    default=False
+    )

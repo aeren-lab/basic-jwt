@@ -13,6 +13,7 @@ class UserResponse(BaseModel):
     email:EmailStr
     role:str
     is_active:bool
+    is_verified: bool  
 
     model_config ={
         "from_attributes":True
@@ -28,3 +29,23 @@ class TokenResponse(BaseModel):
 
 class RefreshTokenRequest(BaseModel):
     refresh_token: str
+
+class RoleUpdate(BaseModel):
+    role: str
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str
+    new_password: str = Field(min_length=8, max_length=100)
+
+class ForgotPasswordRequest(BaseModel):
+    email: EmailStr
+
+class ResetPasswordRequest(BaseModel):
+    token: str
+    new_password: str = Field(min_length=8, max_length=100)
+
+class VerifyEmailRequest(BaseModel):
+    token: str
+
+class DeactivateAccountRequest(BaseModel):
+    password: str

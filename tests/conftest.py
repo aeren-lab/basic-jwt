@@ -12,7 +12,8 @@ TEST_DATABASE_URL = settings.database_url.rsplit("/", 1)[0] + "/jwt_learn_test"
 test_engine = create_engine(TEST_DATABASE_URL)
 TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=test_engine)
 
-# 2. Create tables directly from SQLAlchemy models (no Alembic needed)
+# 2. Drop and recreate tables directly from SQLAlchemy models so test schema is always up-to-date
+Base.metadata.drop_all(bind=test_engine)
 Base.metadata.create_all(bind=test_engine)
 
 # 3. Override get_db to use test database

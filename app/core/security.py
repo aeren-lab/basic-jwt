@@ -67,3 +67,36 @@ def create_refresh_token(data: dict, expires_delta: timedelta | None = None) -> 
     )
 
     return token
+
+def create_reset_token(user_id:int,expires_delta: timedelta | None = None) -> str:
+
+    if expires_delta:
+        exp = datetime.now(timezone.utc) + expires_delta
+    else:
+        exp = datetime.now(timezone.utc) + timedelta(
+            minutes=settings.reset_password_token_expire_time
+        )
+    payload ={"sub":str(user_id),
+            "type":"reset",
+            "jti":str(uuid4()),
+            "exp":exp}
+    token = jwt.encode(
+        payload=payload,
+        key=settings.secret_key,
+        algorithm=settings.algorithm
+    )
+    return token
+
+def create_email_verification_token(user_id: int, expires_delta: timedelta | None = None) -> str:
+    if expires_delta:
+        exp = datetime.now(timezone.utc) + expires_delta
+    else:
+        exp = datetime.now(timezone.utc) + timedelta(hours=24)
+
+    payload = {
+        "sub": str(user_id),
+        "type": "email_verification",
+        "jti": str(uuid4()),
+        "exp": exp
+    }
+    return jwt.encode(payload, settings.secret_key, algorithm=settings.algorithm)
