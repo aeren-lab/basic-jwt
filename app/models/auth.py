@@ -1,4 +1,5 @@
-from sqlalchemy import String
+from datetime import datetime
+from sqlalchemy import DateTime, String
 from sqlalchemy.orm import mapped_column,Mapped
 from app.core.database import Base
 
@@ -35,4 +36,13 @@ class UserAuth(Base):
     is_verified: Mapped[bool] = mapped_column(
     nullable=False,
     default=False
+    )
+    failed_login_attempts: Mapped[int] = mapped_column(
+        nullable=False,
+        default=0
+    )
+    locked_until: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+        default=None
     )

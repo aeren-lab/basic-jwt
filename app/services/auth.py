@@ -44,16 +44,37 @@ def user_login_service(db,data,ip_address:str | None = None,
     user= db.query(UserAuth).filter(
                                 UserAuth.email == data.email).first()
     
+    now = datetime.now(timezone.utc)
+    if user and user.locked_until and user.locked_until > now:
+        history = LoginHistory(
+            user_id=user.id,
+            email=data.email,
+            ip_address=ip_address,
+            user_agent=user_agent,
+            status="failed",
+            created_at=now
+        )
+        db.add(history)
+        db.commit()
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Account temporarily locked due to too many failed login attempts"
+        )
     
     if not user or not verify_password(hashed_password=user.hashed_password,
                                     plain_password=data.password):
+        if user:
+            user.failed_login_attempts += 1
+            if user.failed_login_attempts >= 5:
+                user.locked_until = now + timedelta(minutes=15)
+
         history = LoginHistory(
         user_id = user.id if user else None,
         email = data.email,
         ip_address = ip_address,
         user_agent = user_agent,
         status = "failed",
-        created_at = datetime.now(timezone.utc)
+        created_at = now
         )
 
         db.add(history)
@@ -70,7 +91,7 @@ def user_login_service(db,data,ip_address:str | None = None,
         ip_address = ip_address,
         user_agent = user_agent,
         status = "failed",
-        created_at = datetime.now(timezone.utc)
+        created_at = now
         )
 
         db.add(history)
@@ -79,6 +100,9 @@ def user_login_service(db,data,ip_address:str | None = None,
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Account is deactivated"
         )
+
+    user.failed_login_attempts = 0
+    user.locked_until = None
        
     data = {"sub":str(user.id),
             "role":user.role}

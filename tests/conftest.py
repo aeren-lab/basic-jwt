@@ -8,6 +8,7 @@ from app.core.database import Base, get_db
 from app.core.config import settings
 from app.models.sessions import UserSession
 from app.models.login_history import LoginHistory
+from app.core.rate_limiter import limiter
 
 # 1. Connect to jwt_learn_test
 TEST_DATABASE_URL = settings.database_url.rsplit("/", 1)[0] + "/jwt_learn_test"
@@ -31,6 +32,8 @@ app.dependency_overrides[get_db] = override_get_db
 # 4. Clean tables before every test run so each test is fresh
 @pytest.fixture(autouse=True)
 def clean_tables():
+    limiter.enabled = False
+    limiter.reset()
     with test_engine.connect() as conn:
         conn.execute(text("TRUNCATE TABLE user_auth, revoked_tokens, user_sessions, login_history RESTART IDENTITY CASCADE;"))
         conn.commit()

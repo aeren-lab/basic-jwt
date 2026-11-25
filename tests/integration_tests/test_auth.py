@@ -898,6 +898,91 @@ def test_login_history_requires_auth(client):
     assert res.status_code == 401
 
 
+# 48 test login rate limiting blocks after 5 requests per minute
+def test_login_rate_limit(client):
+    from app.core.rate_limiter import limiter
+    limiter.enabled = True
+    limiter.reset()
+    try:
+        for _ in range(5):
+            res = client.post("/auth/login", json={"email": "nobody@example.com", "password": "wrong"})
+            assert res.status_code == 401
+
+        res6 = client.post("/auth/login", json={"email": "nobody@example.com", "password": "wrong"})
+        assert res6.status_code == 429
+    finally:
+        limiter.enabled = False
+        limiter.reset()
+
+
+# 49 test forgot-password rate limiting blocks after 5 requests per minute
+def test_forgot_password_rate_limit(client):
+    from app.core.rate_limiter import limiter
+    limiter.enabled = True
+    limiter.reset()
+    try:
+        for _ in range(5):
+            res = client.post("/auth/forgot-password", json={"email": "nobody@example.com"})
+            assert res.status_code == 200
+
+        res6 = client.post("/auth/forgot-password", json={"email": "nobody@example.com"})
+        assert res6.status_code == 429
+    finally:
+        limiter.enabled = False
+        limiter.reset()
+
+
+# 50 test brute-force protection locks account after 5 failed attempts
+def test_brute_force_account_lockout(client):
+    data = {"email": "bruteforce@example.com", "password": "CorrectPassword123"}
+    client.post("/auth/register", json=data)
+
+    # 5 failed login attempts
+    for _ in range(5):
+        res = client.post(
+            "/auth/login",
+            json={"email": "bruteforce@example.com", "password": "WrongPassword"}
+        )
+        assert res.status_code == 401
+
+    # 6th attempt even with CORRECT password is blocked with 429
+    locked_res = client.post("/auth/login", json=data)
+    assert locked_res.status_code == 429
+    assert "locked" in locked_res.json()["detail"].lower()
+
+
+# 51 test successful login resets failed login attempts counter
+def test_successful_login_resets_failed_attempts(client):
+    data = {"email": "resetcount@example.com", "password": "CorrectPassword123"}
+    client.post("/auth/register", json=data)
+
+    # 3 failed attempts
+    for _ in range(3):
+        res = client.post(
+            "/auth/login",
+            json={"email": "resetcount@example.com", "password": "WrongPassword"}
+        )
+        assert res.status_code == 401
+
+    # Successful login resets counter to 0
+    ok_res = client.post("/auth/login", json=data)
+    assert ok_res.status_code == 200
+
+    # 3 more failed attempts should still NOT lock the account (3 < 5)
+    for _ in range(3):
+        res = client.post(
+            "/auth/login",
+            json={"email": "resetcount@example.com", "password": "WrongPassword"}
+        )
+        assert res.status_code == 401
+
+    # Valid login still works
+    ok_res2 = client.post("/auth/login", json=data)
+    assert ok_res2.status_code == 200
+
+
+
+
 
 
 

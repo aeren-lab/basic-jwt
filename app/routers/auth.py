@@ -19,6 +19,7 @@ from app.core.database import get_db
 from app.core.dependencies import (get_current_active_user,require_admin,security,
                     require_role, require_permission, require_verified_user)
 from fastapi.security import HTTPAuthorizationCredentials
+from app.core.rate_limiter import limiter
 
 
 router = APIRouter(prefix="/auth",
@@ -31,11 +32,13 @@ def greet() -> dict:
     }
 
 @router.post("/register")
+
 def register(data:UserCreate,
                 db:Session=Depends(get_db)) :
     return user_register_service(db,data)
 
 @router.post("/login",response_model=TokenResponse)
+@limiter.limit("5/minute")
 def user_login(data:UserLogin,request:Request,db:Session=Depends(get_db)) -> TokenResponse:
     user_agent = request.headers.get("user-agent")
     forwarded_for = request.headers.get("x-forwarded-for")
@@ -99,13 +102,15 @@ def delete_user(
 
 
 @router.post("/change-password")
-def password_change(data:ChangePasswordRequest,db:Session=Depends(get_db),
+@limiter.limit("3/minute")
+def password_change(request: Request, data:ChangePasswordRequest,db:Session=Depends(get_db),
                     current_user:UserAuth=Depends(get_current_active_user)):
     
     return change_password(db,data,current_user)
 
 @router.post("/forgot-password")
-def forgot_password(data: ForgotPasswordRequest, db: Session = Depends(get_db)):
+@limiter.limit("5/minute")
+def forgot_password(request: Request, data: ForgotPasswordRequest, db: Session = Depends(get_db)):
     return forgot_password_service(db, data)
 
 @router.post("/reset-password")
